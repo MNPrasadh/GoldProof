@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: goldproof-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-goldproof}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-goldproof_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-goldproof}
+    ports:
+      - "5432:5432"
+    volumes:
+      - goldproof_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-goldproof} -d ${POSTGRES_DB:-goldproof}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: goldproof-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-goldproof}:${POSTGRES_PASSWORD:-goldproof_dev}@db:5432/${POSTGRES_DB:-goldproof}
+      JWT_SECRET: ${JWT_SECRET:-dev-docker-jwt-secret-change-in-prod-2026}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
+      ED25519_PRIVATE_KEY_B64: ${ED25519_PRIVATE_KEY_B64:-}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      LLM_PROVIDER: ${LLM_PROVIDER:-local_evidence_explainer}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      OCR_PROVIDER: ${OCR_PROVIDER:-auto}
+      SPEECH_PROVIDER: ${SPEECH_PROVIDER:-browser_web_speech}
+    ports:
+      - "8000:8000"
+    volumes:
+      - goldproof_keys:/app/.keys
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: goldproof-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+
+volumes:
+  goldproof_pgdata:
+  goldproof_keys:
